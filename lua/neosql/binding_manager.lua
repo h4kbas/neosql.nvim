@@ -22,6 +22,10 @@ function BindingManager.new(app_manager)
     },
     table_list = {
       select_table = "<CR>",
+      insert_template = "i",
+      select_template = "s",
+      update_template = "u",
+      delete_template = "d",
       focus_query = "q",
       focus_result = "e",
     },
@@ -412,10 +416,89 @@ function BindingManager:register_table_list_bindings(bufnr)
     return
   end
 
-  local function select_table()
+  local function get_table_name()
     local line = vim.api.nvim_get_current_line()
-    local table_name = line:match("^%s*(%S+)%s*$")
-    
+    return line:match("^%s*(%S+)%s*$")
+  end
+
+  local function insert_template()
+    local table_name = get_table_name()
+    if not table_name then
+      return
+    end
+
+    if self.app_manager.window_manager then
+      self.app_manager.window_manager:focus_query()
+      local query = string.format('INSERT INTO "%s" (?) VALUES (?);', table_name)
+      vim.api.nvim_buf_set_lines(
+        self.app_manager.window_manager.query_buf,
+        0,
+        -1,
+        false,
+        vim.split(query, "\n")
+      )
+    end
+  end
+
+  local function select_template()
+    local table_name = get_table_name()
+    if not table_name then
+      return
+    end
+
+    if self.app_manager.window_manager then
+      self.app_manager.window_manager:focus_query()
+      local query = string.format('SELECT ? FROM "%s" WHERE ?;', table_name)
+      vim.api.nvim_buf_set_lines(
+        self.app_manager.window_manager.query_buf,
+        0,
+        -1,
+        false,
+        vim.split(query, "\n")
+      )
+    end
+  end
+
+  local function update_template()
+    local table_name = get_table_name()
+    if not table_name then
+      return
+    end
+
+    if self.app_manager.window_manager then
+      self.app_manager.window_manager:focus_query()
+      local query = string.format('UPDATE "%s" SET ? = ? WHERE ?;', table_name)
+      vim.api.nvim_buf_set_lines(
+        self.app_manager.window_manager.query_buf,
+        0,
+        -1,
+        false,
+        vim.split(query, "\n")
+      )
+    end
+  end
+
+  local function delete_template()
+    local table_name = get_table_name()
+    if not table_name then
+      return
+    end
+
+    if self.app_manager.window_manager then
+      self.app_manager.window_manager:focus_query()
+      local query = string.format('DELETE FROM "%s" WHERE ?;', table_name)
+      vim.api.nvim_buf_set_lines(
+        self.app_manager.window_manager.query_buf,
+        0,
+        -1,
+        false,
+        vim.split(query, "\n")
+      )
+    end
+  end
+
+  local function select_table()
+    local table_name = get_table_name()
     if not table_name then
       return
     end
@@ -447,6 +530,10 @@ function BindingManager:register_table_list_bindings(bufnr)
 
   local commands = {
     select_table = select_table,
+    insert_template = insert_template,
+    select_template = select_template,
+    update_template = update_template,
+    delete_template = delete_template,
     focus_query = focus_query,
     focus_result = focus_result,
   }

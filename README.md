@@ -67,6 +67,10 @@ require('neosql').setup({
     },
     table_list = {
       select_table = "<CR>",
+      insert_template = "i",
+      select_template = "s",
+      update_template = "u",
+      delete_template = "d",
       focus_query = "q",
       focus_result = "e",
     },
@@ -102,6 +106,10 @@ require('neosql').setup({
 
 #### Table List Window
 - `<CR>` - Select table and generate `SELECT * FROM "table_name" LIMIT 100;` query
+- `i` - Insert template: `INSERT INTO "table_name" (?) VALUES (?);`
+- `s` - Select template: `SELECT ? FROM "table_name" WHERE ?;`
+- `u` - Update template: `UPDATE "table_name" SET ? = ? WHERE ?;`
+- `d` - Delete template: `DELETE FROM "table_name" WHERE ?;`
 - `q` - Focus query window
 - `e` - Focus result window
 
