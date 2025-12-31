@@ -6,11 +6,13 @@ A Neovim plugin for PostgreSQL database interaction with an intuitive interface 
 
 - **Query Execution**: Execute SQL queries and view results in a formatted markdown table
 - **Data Editing**: Edit cell values directly in the result view
+- **Row Management**: Insert new rows, update existing rows, and delete rows
 - **Change Management**: Apply, undo, or clear changes before committing to the database
 - **Export Support**: Export query results to CSV or JSON formats
-- **Syntax Highlighting**: Visual highlighting for NULL values, boolean values, and edited cells
-- **Primary Key Detection**: Automatically detects primary keys for safe data updates
-- **Table Navigation**: Browse database tables and quickly generate SELECT queries
+- **Syntax Highlighting**: Visual highlighting for NULL values, boolean values, edited cells, and deleted rows
+- **Primary Key Detection**: Automatically detects primary keys for safe data updates and deletes
+- **Table Navigation**: Browse database tables and quickly generate SQL templates
+- **SQL Templates**: Quick access to INSERT, SELECT, UPDATE, and DELETE templates from the table list
 
 ## Installation
 
@@ -57,6 +59,8 @@ require('neosql').setup({
     },
     result = {
       edit_cell = "e",
+      insert_row = "i",
+      delete_row = "dd",
       apply_changes = "a",
       undo_table_changes = "c",
       undo_cell_change = "u",
@@ -96,7 +100,9 @@ require('neosql').setup({
 
 #### Result Window
 - `e` - Edit cell at cursor position
-- `a` - Apply all changes to database
+- `i` - Insert new empty row after current row
+- `dd` - Delete current row (toggle: press again to undo deletion)
+- `a` - Apply all changes to database (inserts, updates, and deletes)
 - `c` - Clear all changes (undo all edits)
 - `u` - Undo change for current cell
 - `U` - Undo all changes for current row
@@ -115,13 +121,29 @@ require('neosql').setup({
 
 ### Editing Data
 
+#### Updating Existing Rows
+
 1. Execute a SELECT query to view data
 2. Navigate to the result window and position your cursor on the cell you want to edit
 3. Press `e` to edit the cell
 4. Enter the new value (the plugin will attempt to preserve the data type)
 5. Press `a` to apply all changes to the database
 
-**Note**: The plugin automatically detects primary keys for the queried table. Changes are applied using UPDATE statements with WHERE clauses based on primary key values.
+#### Inserting New Rows
+
+1. Position your cursor on the row where you want to insert a new row
+2. Press `i` to insert a new empty row after the current row
+3. Edit the cells in the new row using `e`
+4. Press `a` to apply all changes (the new row will be inserted into the database)
+
+#### Deleting Rows
+
+1. Position your cursor on the row you want to delete
+2. Press `dd` to mark the row for deletion (the row will be highlighted with strikethrough)
+3. Press `dd` again on the same row to undo the deletion
+4. Press `a` to apply all changes (marked rows will be deleted from the database)
+
+**Note**: The plugin automatically detects primary keys for the queried table. Updates and deletes are applied using WHERE clauses based on primary key values. If you edit a cell in a deleted row, the deletion is automatically undone and the row becomes an update instead.
 
 ### Exporting Data
 
@@ -139,6 +161,7 @@ Supported formats:
 - **NULL values**: Highlighted in gray italic
 - **Boolean values**: `t` (true) highlighted in cyan, `f` (false) highlighted in red
 - **Edited cells**: Highlighted in blue bold
+- **Deleted rows**: Highlighted with strikethrough in gray
 
 ### Lua API
 

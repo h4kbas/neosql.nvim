@@ -626,4 +626,111 @@ function Postgres:apply_updates(table_name, updates)
   return true, nil
 end
 
+function Postgres:apply_inserts(table_name, inserts)
+  if not table_name or table_name == "" then
+    return false, "Table name is required"
+  end
+
+  if not inserts or #inserts == 0 then
+    return false, "No inserts to apply"
+  end
+
+  for _, insert in ipairs(inserts) do
+    if not insert.values then
+      return false, "Invalid insert format: missing values"
+    end
+
+    local columns = {}
+    local values = {}
+    for col, val in pairs(insert.values) do
+      table.insert(columns, '"' .. col .. '"')
+      if val == nil then
+        table.insert(values, "NULL")
+      elseif type(val) == "string" then
+        val = string.gsub(val, "'", "''")
+        table.insert(values, "'" .. val .. "'")
+      elseif type(val) == "number" then
+        table.insert(values, tostring(val))
+      elseif type(val) == "boolean" then
+        table.insert(values, val and "TRUE" or "FALSE")
+      else
+        table.insert(values, "'" .. tostring(val) .. "'")
+      end
+    end
+
+    if #columns == 0 then
+      return false, "No columns to insert"
+    end
+
+    local sql = string.format('INSERT INTO "%s" (%s) VALUES (%s)',
+      table_name,
+      table.concat(columns, ", "),
+      table.concat(values, ", "))
+
+    local ok, result = pcall(function()
+      return self:query(sql)
+    end)
+
+    if not ok then
+      return false, "Failed to apply insert: " .. tostring(result)
+    end
+
+    if result and result.message then
+      local msg = result.message
+      if msg:match("ERROR") or msg:match("error:") then
+        return false, "Insert failed: " .. msg
+      end
+    end
+  end
+
+  return true, nil
+end
+
+function Postgres:apply_deletes(table_name, deletes)
+  if not table_name or table_name == "" then
+    return false, "Table name is required"
+  end
+
+  if not deletes or #deletes == 0 then
+    return false, "No deletes to apply"
+  end
+
+  for _, delete in ipairs(deletes) do
+    if not delete.primary_key then
+      return false, "Invalid delete format: missing primary_key"
+    end
+
+    local where_parts = {}
+    for pk, pk_value in pairs(delete.primary_key) do
+      if type(pk_value) == "string" then
+        pk_value = string.gsub(pk_value, "'", "''")
+        table.insert(where_parts, '"' .. pk .. '" = \'' .. pk_value .. '\'')
+      else
+        table.insert(where_parts, '"' .. pk .. '" = ' .. tostring(pk_value))
+      end
+    end
+
+    local sql = string.format('DELETE FROM "%s" WHERE %s',
+      table_name,
+      table.concat(where_parts, " AND "))
+
+    local ok, result = pcall(function()
+      return self:query(sql)
+    end)
+
+    if not ok then
+      return false, "Failed to apply delete: " .. tostring(result)
+    end
+
+    if result and result.message then
+      local msg = result.message
+      if msg:match("ERROR") or msg:match("error:") then
+        return false, "Delete failed: " .. msg
+      end
+    end
+  end
+
+  return true, nil
+end
+
 return Postgres

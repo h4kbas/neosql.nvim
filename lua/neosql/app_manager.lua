@@ -217,6 +217,23 @@ function AppManager:refresh_result()
   self.window_manager:set_result(formatted, self.data_manager)
 end
 
+function AppManager:insert_row(after_row_index)
+  local new_row_index = self.data_manager:insert_new_row(after_row_index)
+  if new_row_index then
+    self:refresh_result()
+    return true, new_row_index
+  end
+  return false, nil
+end
+
+function AppManager:delete_row(row_index)
+  local ok = self.data_manager:mark_row_deleted(row_index)
+  if ok then
+    self:refresh_result()
+  end
+  return ok
+end
+
 function AppManager:apply_changes()
   if not self.data_manager:has_changes() then
     return false, "No changes to apply"
@@ -231,29 +248,68 @@ function AppManager:apply_changes()
     return false, "Could not determine table name"
   end
 
-  local primary_keys = self.data_manager.primary_keys
-  if #primary_keys == 0 then
-    if self.db and self.db.get_primary_keys then
-      primary_keys = self.db:get_primary_keys(table_name, nil, was_quoted) or {}
-      if #primary_keys > 0 then
-        self.data_manager.primary_keys = primary_keys
-      end
+  local inserts = self.data_manager:get_changes_for_insert()
+  local updates = self.data_manager:get_changes_for_update()
+  local deletes = self.data_manager:get_changes_for_delete()
+
+  if #inserts > 0 then
+    if not self.db.apply_inserts then
+      return false, "Database does not support applying inserts"
+    end
+    local ok, err = self.db:apply_inserts(table_name, inserts)
+    if not ok then
+      return false, err
     end
   end
 
-  if #primary_keys == 0 then
-    return false, "No primary keys detected for table '" .. table_name .. "'. Cannot apply changes."
+  if #updates > 0 then
+    local primary_keys = self.data_manager.primary_keys
+    if #primary_keys == 0 then
+      if self.db and self.db.get_primary_keys then
+        primary_keys = self.db:get_primary_keys(table_name, nil, was_quoted) or {}
+        if #primary_keys > 0 then
+          self.data_manager.primary_keys = primary_keys
+        end
+      end
+    end
+
+    if #primary_keys == 0 then
+      return false, "No primary keys detected for table '" .. table_name .. "'. Cannot apply updates."
+    end
+
+    if not self.db.apply_updates then
+      return false, "Database does not support applying updates"
+    end
+
+    local ok, err = self.db:apply_updates(table_name, updates)
+    if not ok then
+      return false, err
+    end
   end
 
-  local updates = self.data_manager:get_changes_for_update()
-  
-  if not self.db.apply_updates then
-    return false, "Database does not support applying updates"
-  end
+  if #deletes > 0 then
+    local primary_keys = self.data_manager.primary_keys
+    if #primary_keys == 0 then
+      if self.db and self.db.get_primary_keys then
+        primary_keys = self.db:get_primary_keys(table_name, nil, was_quoted) or {}
+        if #primary_keys > 0 then
+          self.data_manager.primary_keys = primary_keys
+        end
+      end
+    end
 
-  local ok, err = self.db:apply_updates(table_name, updates)
-  if not ok then
-    return false, err
+    if #primary_keys == 0 then
+      return false, "No primary keys detected for table '" .. table_name .. "'. Cannot apply deletes."
+    end
+
+    if not self.db.apply_deletes then
+      return false, "Database does not support applying deletes"
+    end
+
+    local ok, err = self.db:apply_deletes(table_name, deletes)
+    if not ok then
+      return false, err
+    end
   end
 
   self.data_manager:undo_table_changes()

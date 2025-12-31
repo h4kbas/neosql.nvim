@@ -12,6 +12,7 @@ function WindowManager.new()
   self.null_namespace = nil
   self.boolean_namespace = nil
   self.edited_namespace = nil
+  self.deleted_namespace = nil
   self.current_data_manager = nil
   return self
 end
@@ -114,6 +115,7 @@ function WindowManager:set_result(content, data_manager)
   self:_highlight_null_values()
   self:_highlight_boolean_values()
   self:_highlight_edited_cells()
+  self:_highlight_deleted_rows()
 end
 
 function WindowManager:_highlight_null_values()
@@ -259,6 +261,10 @@ function WindowManager:_highlight_edited_cells()
   
   vim.api.nvim_buf_clear_namespace(self.result_buf, self.edited_namespace, 0, -1)
   
+  if not self.current_data_manager then
+    return
+  end
+  
   local changed_cells = self.current_data_manager:get_change_positions()
   local columns = self.current_data_manager:get_columns()
   
@@ -362,6 +368,62 @@ function WindowManager:_highlight_edited_cells()
           end
         end
       end
+    end
+    
+    ::continue::
+  end
+end
+
+function WindowManager:_highlight_deleted_rows()
+  if not self.result_buf then
+    return
+  end
+  
+  local hl_group = "NeoSqlDeleted"
+  vim.cmd(string.format("highlight %s guifg=#808080 gui=strikethrough", hl_group))
+  
+  if not self.deleted_namespace then
+    self.deleted_namespace = vim.api.nvim_create_namespace("neosql_deleted")
+  end
+  
+  vim.api.nvim_buf_clear_namespace(self.result_buf, self.deleted_namespace, 0, -1)
+  
+  if not self.current_data_manager then
+    return
+  end
+  
+  local lines = vim.api.nvim_buf_get_lines(self.result_buf, 0, -1, false)
+  local header_line_idx = nil
+  
+  for i, line in ipairs(lines) do
+    if line:match("|") and not line:match("^%s*|%s*%-+") then
+      header_line_idx = i
+      break
+    end
+  end
+  
+  if not header_line_idx then
+    return
+  end
+  
+  for line_num = header_line_idx + 2, #lines do
+    local line = lines[line_num]
+    if not line or not line:match("|") or line:match("^%s*|%s*%-+") then
+      goto continue
+    end
+    
+    local row_index = line_num - header_line_idx - 1
+    local status = self.current_data_manager:get_row_status(row_index)
+    
+    if status == "deleted" then
+      vim.api.nvim_buf_add_highlight(
+        self.result_buf,
+        self.deleted_namespace,
+        hl_group,
+        line_num - 1,
+        0,
+        -1
+      )
     end
     
     ::continue::

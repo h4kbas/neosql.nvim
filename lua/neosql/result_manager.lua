@@ -34,8 +34,10 @@ function ResultManager:format_result_with_changes(data, columns, changes)
   
   for i, row in ipairs(data) do
     if type(row) == "table" then
-      local display_row = self:_apply_changes_to_row(row, change_map[i])
-      table.insert(formatted, self:_format_data_row(display_row, columns, col_widths, change_map[i]))
+      local change_info = change_map[i]
+      local is_deleted = change_info and change_info.status == "deleted"
+      local display_row = self:_apply_changes_to_row(row, change_info)
+      table.insert(formatted, self:_format_data_row(display_row, columns, col_widths, change_info, is_deleted))
     end
   end
 
@@ -126,7 +128,7 @@ function ResultManager:_format_separator(columns, col_widths)
   return "|" .. table.concat(separator_parts, "|") .. "|"
 end
 
-function ResultManager:_format_data_row(row, columns, col_widths, change_info)
+function ResultManager:_format_data_row(row, columns, col_widths, change_info, is_deleted)
   local row_parts = {}
   for _, col in ipairs(columns) do
     local is_changed = change_info and change_info.changes[col] ~= nil

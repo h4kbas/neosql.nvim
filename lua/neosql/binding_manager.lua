@@ -12,6 +12,8 @@ function BindingManager.new(app_manager)
     },
     result = {
       edit_cell = "e",
+      insert_row = "i",
+      delete_row = "dd",
       apply_changes = "a",
       undo_table_changes = "c",
       undo_cell_change = "u",
@@ -335,6 +337,121 @@ function BindingManager:register_result_bindings(bufnr)
     vim.notify("Row changes undone", vim.log.levels.INFO)
   end
 
+  local function insert_row()
+    local result_buf = self.app_manager.window_manager.result_buf
+    local result_win = self.app_manager.window_manager.result_win
+    
+    if not result_buf or not result_win then
+      vim.notify("Result buffer or window not found", vim.log.levels.WARN)
+      return
+    end
+    
+    if not vim.api.nvim_win_is_valid(result_win) then
+      vim.notify("Result window is no longer valid", vim.log.levels.WARN)
+      return
+    end
+    
+    local cursor = vim.api.nvim_win_get_cursor(result_win)
+    local line_num = cursor[1]
+    
+    local lines = vim.api.nvim_buf_get_lines(result_buf, 0, -1, false)
+    local header_line_idx = nil
+    
+    for i = 1, #lines do
+      local line = lines[i]
+      if line and line:match("|") and not line:match("^%s*|%s*%-+") then
+        header_line_idx = i
+        break
+      end
+    end
+    
+    if not header_line_idx then
+      vim.notify("Could not find header", vim.log.levels.WARN)
+      return
+    end
+    
+    local row = line_num - header_line_idx - 1
+    
+    if row < 0 then
+      vim.notify("Cannot insert at header or separator row", vim.log.levels.WARN)
+      return
+    end
+
+    local data = self.app_manager.data_manager:get_data()
+    if not data then
+      vim.notify("No data available", vim.log.levels.WARN)
+      return
+    end
+
+    local ok, new_row_index = self.app_manager:insert_row(row)
+    if ok then
+      vim.notify("New row inserted", vim.log.levels.INFO)
+    else
+      vim.notify("Failed to insert new row", vim.log.levels.ERROR)
+    end
+  end
+
+  local function delete_row()
+    local result_buf = self.app_manager.window_manager.result_buf
+    local result_win = self.app_manager.window_manager.result_win
+    
+    if not result_buf or not result_win then
+      vim.notify("Result buffer or window not found", vim.log.levels.WARN)
+      return
+    end
+    
+    if not vim.api.nvim_win_is_valid(result_win) then
+      vim.notify("Result window is no longer valid", vim.log.levels.WARN)
+      return
+    end
+    
+    local cursor = vim.api.nvim_win_get_cursor(result_win)
+    local line_num = cursor[1]
+    
+    local lines = vim.api.nvim_buf_get_lines(result_buf, 0, -1, false)
+    local header_line_idx = nil
+    
+    for i = 1, #lines do
+      local line = lines[i]
+      if line and line:match("|") and not line:match("^%s*|%s*%-+") then
+        header_line_idx = i
+        break
+      end
+    end
+    
+    if not header_line_idx then
+      vim.notify("Could not find header", vim.log.levels.WARN)
+      return
+    end
+    
+    local row = line_num - header_line_idx - 1
+    
+    if row < 1 then
+      vim.notify("Cannot delete header or separator row", vim.log.levels.WARN)
+      return
+    end
+
+    local data = self.app_manager.data_manager:get_data()
+    if not data or row > #data then
+      vim.notify(string.format("Invalid row: %d (total rows: %d)", row, #data or 0), vim.log.levels.WARN)
+      return
+    end
+
+    local status = self.app_manager.data_manager:get_row_status(row)
+    local ok = self.app_manager:delete_row(row)
+    if ok then
+      if status == "inserted" then
+        vim.notify("Inserted row removed", vim.log.levels.INFO)
+      elseif status == "deleted" then
+        vim.notify("Row deletion undone", vim.log.levels.INFO)
+      else
+        vim.notify("Row marked for deletion", vim.log.levels.INFO)
+      end
+    else
+      vim.notify("Failed to delete row", vim.log.levels.ERROR)
+    end
+  end
+
   local function export()
     local filepath = vim.fn.input("Export to: ", "", "file")
     if filepath and filepath ~= "" then
@@ -388,6 +505,8 @@ function BindingManager:register_result_bindings(bufnr)
 
   local commands = {
     edit_cell = edit_cell,
+    insert_row = insert_row,
+    delete_row = delete_row,
     apply_changes = apply_changes,
     undo_table_changes = undo_table_changes,
     undo_cell_change = undo_cell_change,
@@ -468,25 +587,6 @@ function BindingManager:register_table_list_bindings(bufnr)
     if self.app_manager.window_manager then
       self.app_manager.window_manager:focus_query()
       local query = string.format('UPDATE "%s" SET ? = ? WHERE ?;', table_name)
-      vim.api.nvim_buf_set_lines(
-        self.app_manager.window_manager.query_buf,
-        0,
-        -1,
-        false,
-        vim.split(query, "\n")
-      )
-    end
-  end
-
-  local function delete_template()
-    local table_name = get_table_name()
-    if not table_name then
-      return
-    end
-
-    if self.app_manager.window_manager then
-      self.app_manager.window_manager:focus_query()
-      local query = string.format('DELETE FROM "%s" WHERE ?;', table_name)
       vim.api.nvim_buf_set_lines(
         self.app_manager.window_manager.query_buf,
         0,
