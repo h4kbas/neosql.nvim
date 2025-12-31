@@ -1,6 +1,8 @@
 # neosql
 
 A Neovim plugin for PostgreSQL database interaction with an intuitive interface for querying, editing, and exporting data.
+<img width="1470" height="893" alt="Screenshot 2025-12-31 at 18 08 05" src="https://github.com/user-attachments/assets/9f690be1-94ce-42a3-8e6b-6e38f49ce159" />
+
 
 ## Features
 
