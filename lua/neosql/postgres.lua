@@ -440,7 +440,7 @@ function Postgres:get_tables(schema)
   return tables, nil
 end
 
-function Postgres:get_primary_keys(table_name, schema, was_quoted)
+function Postgres:get_primary_keys(table_name, schema)
   schema = schema or 'public'
   
   if not table_name or table_name == "" then
@@ -451,59 +451,40 @@ function Postgres:get_primary_keys(table_name, schema, was_quoted)
   local escaped_table_name = clean_table_name:gsub("'", "''")
   local escaped_schema = schema:gsub("'", "''")
   
-  local sql
-  if was_quoted then
-    sql = string.format([[
-      SELECT a.attname AS column_name
-      FROM pg_index i
-      JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-      JOIN pg_class c ON c.oid = i.indrelid
-      JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE i.indisprimary = true
-        AND c.relname = '%s'
-        AND n.nspname = '%s'
-      ORDER BY array_position(i.indkey, a.attnum);
-    ]], escaped_table_name, escaped_schema)
-  else
-    sql = string.format([[
-      SELECT a.attname AS column_name
-      FROM pg_index i
-      JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-      JOIN pg_class c ON c.oid = i.indrelid
-      JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE i.indisprimary = true
-        AND c.relname = LOWER('%s')
-        AND n.nspname = '%s'
-      ORDER BY array_position(i.indkey, a.attnum);
-    ]], escaped_table_name, escaped_schema)
-  end
+  local sql = string.format([[
+    SELECT a.attname AS column_name
+    FROM pg_index i
+    JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+    JOIN pg_class c ON c.oid = i.indrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE i.indisprimary = true
+      AND c.relname = '%s'
+      AND n.nspname = '%s'
+    ORDER BY array_position(i.indkey, a.attnum);
+  ]], escaped_table_name, escaped_schema)
 
   local ok, result = pcall(function()
     return self:query(sql)
   end)
 
   if not ok or not result then
-    if not was_quoted then
-      sql = string.format([[
-        SELECT column_name
-        FROM information_schema.table_constraints tc
-        JOIN information_schema.key_column_usage kcu
-          ON tc.constraint_name = kcu.constraint_name
-          AND tc.table_schema = kcu.table_schema
-        WHERE tc.constraint_type = 'PRIMARY KEY'
-          AND LOWER(tc.table_name) = LOWER('%s')
-          AND tc.table_schema = '%s'
-        ORDER BY kcu.ordinal_position;
-      ]], escaped_table_name, escaped_schema)
+    sql = string.format([[
+      SELECT column_name
+      FROM information_schema.table_constraints tc
+      JOIN information_schema.key_column_usage kcu
+        ON tc.constraint_name = kcu.constraint_name
+        AND tc.table_schema = kcu.table_schema
+      WHERE tc.constraint_type = 'PRIMARY KEY'
+        AND tc.table_name = '%s'
+        AND tc.table_schema = '%s'
+      ORDER BY kcu.ordinal_position;
+    ]], escaped_table_name, escaped_schema)
 
-      ok, result = pcall(function()
-        return self:query(sql)
-      end)
+    ok, result = pcall(function()
+      return self:query(sql)
+    end)
 
-      if not ok or not result then
-        return {}
-      end
-    else
+    if not ok or not result then
       return {}
     end
   end
@@ -523,6 +504,57 @@ function Postgres:get_primary_keys(table_name, schema, was_quoted)
   end
 
   return primary_keys
+end
+
+function Postgres:get_table_columns(table_name, schema)
+  schema = schema or 'public'
+  if not table_name or table_name == "" then
+    return nil, "Table name is required"
+  end
+
+  local clean_table_name = table_name:gsub('^"', ''):gsub('"$', '')
+  local escaped_table_name = clean_table_name:gsub("'", "''")
+  local escaped_schema = schema:gsub("'", "''")
+
+  local sql = string.format([[
+    SELECT 
+      column_name,
+      data_type,
+      character_maximum_length,
+      numeric_precision,
+      numeric_scale,
+      is_nullable,
+      column_default,
+      ordinal_position
+    FROM information_schema.columns
+    WHERE table_schema = '%s'
+      AND table_name = '%s'
+    ORDER BY ordinal_position;
+  ]], escaped_schema, escaped_table_name)
+
+  local ok, result = pcall(function()
+    return self:query(sql)
+  end)
+
+  if not ok then
+    return nil, result
+  end
+
+  if not result or not result.rows then
+    return nil, "No columns found"
+  end
+
+  local rows = result.rows
+  local columns = result.columns
+
+  if not rows or #rows == 0 then
+    return nil, "No columns found"
+  end
+
+  return {
+    rows = rows,
+    columns = columns,
+  }, nil
 end
 
 function Postgres:extract_table_name(query)
@@ -602,7 +634,7 @@ function Postgres:apply_updates(table_name, updates)
       end
     end
 
-    local sql = string.format('UPDATE "%s" SET %s WHERE %s',
+    local sql = string.format('UPDATE %s SET %s WHERE %s',
       table_name,
       table.concat(set_parts, ", "),
       table.concat(where_parts, " AND "))
@@ -662,7 +694,7 @@ function Postgres:apply_inserts(table_name, inserts)
       return false, "No columns to insert"
     end
 
-    local sql = string.format('INSERT INTO "%s" (%s) VALUES (%s)',
+    local sql = string.format('INSERT INTO %s (%s) VALUES (%s)',
       table_name,
       table.concat(columns, ", "),
       table.concat(values, ", "))
@@ -710,7 +742,7 @@ function Postgres:apply_deletes(table_name, deletes)
       end
     end
 
-    local sql = string.format('DELETE FROM "%s" WHERE %s',
+    local sql = string.format('DELETE FROM %s WHERE %s',
       table_name,
       table.concat(where_parts, " AND "))
 
@@ -726,6 +758,185 @@ function Postgres:apply_deletes(table_name, deletes)
       local msg = result.message
       if msg:match("ERROR") or msg:match("error:") then
         return false, "Delete failed: " .. msg
+      end
+    end
+  end
+
+  return true, nil
+end
+
+function Postgres:apply_table_properties(table_name, updates)
+  if not table_name or table_name == "" then
+    return false, "Table name is required"
+  end
+
+  if not updates or #updates == 0 then
+    return false, "No updates to apply"
+  end
+
+  for _, update in ipairs(updates) do
+    if not update.primary_key or not update.changes then
+      return false, "Invalid update format: missing primary_key or changes"
+    end
+
+    local column_name = update.primary_key.column_name
+    if not column_name then
+      return false, "Column name is required for table property update"
+    end
+
+    if not update.original_row then
+      return false, "Original row data is required for table property update (column: " .. tostring(column_name) .. ")"
+    end
+
+    local original_row = update.original_row
+    local quoted_column_name = '"' .. column_name .. '"'
+    local alter_statements = {}
+
+    local column_rename_stmt = nil
+    local new_column_name = column_name
+    
+    for field, new_value in pairs(update.changes) do
+      if field == "column_name" then
+        local new_col_name = tostring(new_value):gsub("^%s+", ""):gsub("%s+$", "")
+        if new_col_name ~= "" and new_col_name ~= column_name then
+          new_column_name = new_col_name
+          column_rename_stmt = string.format('RENAME COLUMN %s TO "%s"', quoted_column_name, new_column_name)
+        end
+      end
+    end
+    
+    if column_rename_stmt then
+      quoted_column_name = '"' .. new_column_name .. '"'
+    end
+    
+    for field, new_value in pairs(update.changes) do
+      local original_value = original_row[field]
+      
+      if field == "column_name" then
+      elseif field == "is_nullable" then
+        local original_str = original_value and tostring(original_value):upper():gsub("^%s+", ""):gsub("%s+$", "") or ""
+        local new_str = new_value and tostring(new_value):upper():gsub("^%s+", ""):gsub("%s+$", "") or ""
+        
+        if original_str ~= new_str then
+          if new_str == "NO" then
+            table.insert(alter_statements, string.format('ALTER COLUMN %s SET NOT NULL', quoted_column_name))
+          elseif new_str == "YES" then
+            table.insert(alter_statements, string.format('ALTER COLUMN %s DROP NOT NULL', quoted_column_name))
+          end
+        end
+      elseif field == "column_default" then
+        local original_default_str = original_value and tostring(original_value) or ""
+        local new_default_str = new_value and tostring(new_value) or ""
+        
+        local original_is_empty = original_value == nil or original_value == ""
+        local new_is_empty = new_value == nil or new_value == ""
+        
+        if original_is_empty and new_is_empty then
+        elseif original_is_empty ~= new_is_empty or original_default_str ~= new_default_str then
+          if new_is_empty then
+            table.insert(alter_statements, string.format('ALTER COLUMN %s DROP DEFAULT', quoted_column_name))
+          else
+            local default_value = tostring(new_value)
+            if type(new_value) == "string" then
+              default_value = string.gsub(default_value, "'", "''")
+              if not (default_value:match("^%(") or default_value:match("^'") or default_value:match("^%-?%d") or default_value:upper() == "TRUE" or default_value:upper() == "FALSE" or default_value:upper() == "NULL") then
+                default_value = "'" .. default_value .. "'"
+              end
+            end
+            table.insert(alter_statements, string.format('ALTER COLUMN %s SET DEFAULT %s', quoted_column_name, default_value))
+          end
+        end
+      end
+    end
+
+    if column_rename_stmt then
+      local sql = string.format('ALTER TABLE %s %s',
+        table_name,
+        column_rename_stmt)
+
+      local ok, result = pcall(function()
+        return self:query(sql)
+      end)
+
+      if not ok then
+        return false, "Failed to rename column: " .. tostring(result) .. " (SQL: " .. sql .. ")"
+      end
+
+      if result and result.message then
+        local msg = result.message
+        if msg:match("ERROR") or msg:match("error:") then
+          return false, "Column rename failed: " .. msg .. " (SQL: " .. sql .. ")"
+        end
+      end
+    end
+
+    if #alter_statements == 0 then
+      if not column_rename_stmt then
+        goto continue
+      else
+        return true, nil
+      end
+    end
+
+    for _, alter_stmt in ipairs(alter_statements) do
+      local sql = string.format('ALTER TABLE %s %s',
+        table_name,
+        alter_stmt)
+
+      local ok, result = pcall(function()
+        return self:query(sql)
+      end)
+
+      if not ok then
+        return false, "Failed to apply table property change: " .. tostring(result) .. " (SQL: " .. sql .. ")"
+      end
+
+      if result and result.message then
+        local msg = result.message
+        if msg:match("ERROR") or msg:match("error:") then
+          return false, "Table property change failed: " .. msg .. " (SQL: " .. sql .. ")"
+        end
+      end
+    end
+
+    ::continue::
+  end
+
+  return true, nil
+end
+
+function Postgres:apply_table_property_deletes(table_name, deletes)
+  if not table_name or table_name == "" then
+    return false, "Table name is required"
+  end
+
+  if not deletes or #deletes == 0 then
+    return false, "No deletes to apply"
+  end
+
+  for _, delete in ipairs(deletes) do
+    if not delete.primary_key or not delete.primary_key.column_name then
+      return false, "Invalid delete format: missing column name"
+    end
+
+    local column_name = delete.primary_key.column_name
+    local quoted_column_name = '"' .. column_name .. '"'
+    local sql = string.format('ALTER TABLE %s DROP COLUMN %s',
+      table_name,
+      quoted_column_name)
+
+    local ok, result = pcall(function()
+      return self:query(sql)
+    end)
+
+    if not ok then
+      return false, "Failed to delete column: " .. tostring(result) .. " (SQL: " .. sql .. ")"
+    end
+
+    if result and result.message then
+      local msg = result.message
+      if msg:match("ERROR") or msg:match("error:") then
+        return false, "Column delete failed: " .. msg .. " (SQL: " .. sql .. ")"
       end
     end
   end
