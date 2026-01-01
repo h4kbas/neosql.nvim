@@ -331,10 +331,11 @@ function AppManager:_apply_properties_changes()
     return false, "No table name available for properties mode"
   end
 
+  local inserts = self.data_manager:get_changes_for_insert()
   local updates = self.data_manager:get_changes_for_update()
   local deletes = self.data_manager:get_changes_for_delete()
   
-  if #updates == 0 and #deletes == 0 then
+  if #inserts == 0 and #updates == 0 and #deletes == 0 then
     return false, "No changes to apply"
   end
 
@@ -351,11 +352,11 @@ function AppManager:_apply_properties_changes()
     end
   end
 
-  if #deletes > 0 then
-    if not self.db.apply_table_property_deletes then
-      return false, "Database does not support deleting table columns"
+  if #inserts > 0 then
+    if not self.db.apply_table_property_inserts then
+      return false, "Database does not support adding table columns"
     end
-    local ok, err = self.db:apply_table_property_deletes(self.current_table_name, deletes)
+    local ok, err = self.db:apply_table_property_inserts(self.current_table_name, inserts)
     if not ok then
       return false, err
     end
@@ -366,6 +367,16 @@ function AppManager:_apply_properties_changes()
       return false, "Database does not support applying table properties"
     end
     local ok, err = self.db:apply_table_properties(self.current_table_name, updates)
+    if not ok then
+      return false, err
+    end
+  end
+
+  if #deletes > 0 then
+    if not self.db.apply_table_property_deletes then
+      return false, "Database does not support deleting table columns"
+    end
+    local ok, err = self.db:apply_table_property_deletes(self.current_table_name, deletes)
     if not ok then
       return false, err
     end

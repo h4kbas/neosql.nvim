@@ -905,6 +905,73 @@ function Postgres:apply_table_properties(table_name, updates)
   return true, nil
 end
 
+function Postgres:apply_table_property_inserts(table_name, inserts)
+  if not table_name or table_name == "" then
+    return false, "Table name is required"
+  end
+
+  if not inserts or #inserts == 0 then
+    return false, "No inserts to apply"
+  end
+
+  for _, insert in ipairs(inserts) do
+    if not insert.values then
+      return false, "Invalid insert format: missing values"
+    end
+
+    local column_name = insert.values.column_name
+    if not column_name or column_name == "" then
+      return false, "Column name is required for new column"
+    end
+
+    local data_type = insert.values.data_type
+    if not data_type or data_type == "" then
+      return false, "Data type is required for new column"
+    end
+
+    local quoted_column_name = '"' .. column_name .. '"'
+    local column_definition_parts = { quoted_column_name, data_type }
+
+    local is_nullable = insert.values.is_nullable
+    if is_nullable and (is_nullable == "NO" or is_nullable:upper() == "NO") then
+      table.insert(column_definition_parts, "NOT NULL")
+    end
+
+    local column_default = insert.values.column_default
+    if column_default and column_default ~= "" then
+      local default_value = tostring(column_default)
+      if type(column_default) == "string" then
+        default_value = string.gsub(default_value, "'", "''")
+        if not (default_value:match("^%(") or default_value:match("^'") or default_value:match("^%-?%d") or default_value:upper() == "TRUE" or default_value:upper() == "FALSE" or default_value:upper() == "NULL") then
+          default_value = "'" .. default_value .. "'"
+        end
+      end
+      table.insert(column_definition_parts, "DEFAULT " .. default_value)
+    end
+
+    local sql = string.format('ALTER TABLE %s ADD COLUMN %s',
+      table_name,
+      table.concat(column_definition_parts, " "))
+
+    local ok, result = pcall(function()
+      return self:query(sql)
+    end)
+
+    if not ok then
+      return false, "Failed to add column: " .. tostring(result) .. " (SQL: " .. sql .. ")"
+    end
+
+    if result and result.message then
+      local msg = result.message
+      if msg:match("ERROR") or msg:match("error:") then
+        return false, "Column add failed: " .. msg .. " (SQL: " .. sql .. ")"
+      end
+    end
+  end
+
+  return true, nil
+end
+
 function Postgres:apply_table_property_deletes(table_name, deletes)
   if not table_name or table_name == "" then
     return false, "Table name is required"
