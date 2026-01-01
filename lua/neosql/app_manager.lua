@@ -118,6 +118,14 @@ function AppManager:_normalize_table_name(table_name)
   return '"' .. clean .. '"', clean
 end
 
+function AppManager:_normalize_column_name(column_name)
+  if not column_name or column_name == "" then
+    return nil, nil
+  end
+  local clean = column_name:gsub('^"', ''):gsub('"$', '')
+  return '"' .. clean .. '"', clean
+end
+
 function AppManager:load_table_properties(table_name)
   if not self.db or not self.db:is_connected() then
     self.window_manager:set_result({ "Error: Not connected to database" })

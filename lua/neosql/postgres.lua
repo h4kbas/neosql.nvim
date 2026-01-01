@@ -765,6 +765,14 @@ function Postgres:apply_deletes(table_name, deletes)
   return true, nil
 end
 
+function Postgres:_normalize_column_name(column_name)
+  if not column_name or column_name == "" then
+    return nil, nil
+  end
+  local clean = column_name:gsub('^"', ''):gsub('"$', '')
+  return '"' .. clean .. '"', clean
+end
+
 function Postgres:apply_table_properties(table_name, updates)
   if not table_name or table_name == "" then
     return false, "Table name is required"
@@ -779,17 +787,22 @@ function Postgres:apply_table_properties(table_name, updates)
       return false, "Invalid update format: missing primary_key or changes"
     end
 
-    local column_name = update.primary_key.column_name
-    if not column_name then
+    local column_name_raw = update.primary_key.column_name
+    if not column_name_raw then
       return false, "Column name is required for table property update"
     end
 
+    local column_name, _ = self:_normalize_column_name(column_name_raw)
+    if not column_name then
+      return false, "Invalid column name"
+    end
+
     if not update.original_row then
-      return false, "Original row data is required for table property update (column: " .. tostring(column_name) .. ")"
+      local _, clean_name = self:_normalize_column_name(column_name_raw)
+      return false, "Original row data is required for table property update (column: " .. tostring(clean_name) .. ")"
     end
 
     local original_row = update.original_row
-    local quoted_column_name = '"' .. column_name .. '"'
     local alter_statements = {}
 
     local column_rename_stmt = nil
@@ -797,16 +810,17 @@ function Postgres:apply_table_properties(table_name, updates)
     
     for field, new_value in pairs(update.changes) do
       if field == "column_name" then
-        local new_col_name = tostring(new_value):gsub("^%s+", ""):gsub("%s+$", "")
-        if new_col_name ~= "" and new_col_name ~= column_name then
-          new_column_name = new_col_name
-          column_rename_stmt = string.format('RENAME COLUMN %s TO "%s"', quoted_column_name, new_column_name)
+        local new_col_name_quoted, new_col_name_clean = self:_normalize_column_name(tostring(new_value))
+        local _, current_col_name_clean = self:_normalize_column_name(column_name_raw)
+        if new_col_name_quoted and new_col_name_clean ~= "" and new_col_name_clean ~= current_col_name_clean then
+          new_column_name = new_col_name_quoted
+          column_rename_stmt = string.format('RENAME COLUMN %s TO %s', column_name, new_column_name)
         end
       end
     end
     
     if column_rename_stmt then
-      quoted_column_name = '"' .. new_column_name .. '"'
+      column_name = new_column_name
     end
     
     for field, new_value in pairs(update.changes) do
@@ -819,9 +833,9 @@ function Postgres:apply_table_properties(table_name, updates)
         
         if original_str ~= new_str then
           if new_str == "NO" then
-            table.insert(alter_statements, string.format('ALTER COLUMN %s SET NOT NULL', quoted_column_name))
+            table.insert(alter_statements, string.format('ALTER COLUMN %s SET NOT NULL', column_name))
           elseif new_str == "YES" then
-            table.insert(alter_statements, string.format('ALTER COLUMN %s DROP NOT NULL', quoted_column_name))
+            table.insert(alter_statements, string.format('ALTER COLUMN %s DROP NOT NULL', column_name))
           end
         end
       elseif field == "column_default" then
@@ -834,7 +848,7 @@ function Postgres:apply_table_properties(table_name, updates)
         if original_is_empty and new_is_empty then
         elseif original_is_empty ~= new_is_empty or original_default_str ~= new_default_str then
           if new_is_empty then
-            table.insert(alter_statements, string.format('ALTER COLUMN %s DROP DEFAULT', quoted_column_name))
+            table.insert(alter_statements, string.format('ALTER COLUMN %s DROP DEFAULT', column_name))
           else
             local default_value = tostring(new_value)
             if type(new_value) == "string" then
@@ -843,7 +857,7 @@ function Postgres:apply_table_properties(table_name, updates)
                 default_value = "'" .. default_value .. "'"
               end
             end
-            table.insert(alter_statements, string.format('ALTER COLUMN %s SET DEFAULT %s', quoted_column_name, default_value))
+            table.insert(alter_statements, string.format('ALTER COLUMN %s SET DEFAULT %s', column_name, default_value))
           end
         end
       end
@@ -919,9 +933,14 @@ function Postgres:apply_table_property_inserts(table_name, inserts)
       return false, "Invalid insert format: missing values"
     end
 
-    local column_name = insert.values.column_name
-    if not column_name or column_name == "" then
+    local column_name_raw = insert.values.column_name
+    if not column_name_raw or column_name_raw == "" then
       return false, "Column name is required for new column"
+    end
+
+    local column_name, _ = self:_normalize_column_name(column_name_raw)
+    if not column_name then
+      return false, "Invalid column name"
     end
 
     local data_type = insert.values.data_type
@@ -929,8 +948,7 @@ function Postgres:apply_table_property_inserts(table_name, inserts)
       return false, "Data type is required for new column"
     end
 
-    local quoted_column_name = '"' .. column_name .. '"'
-    local column_definition_parts = { quoted_column_name, data_type }
+    local column_definition_parts = { column_name, data_type }
 
     local is_nullable = insert.values.is_nullable
     if is_nullable and (is_nullable == "NO" or is_nullable:upper() == "NO") then
@@ -986,11 +1004,15 @@ function Postgres:apply_table_property_deletes(table_name, deletes)
       return false, "Invalid delete format: missing column name"
     end
 
-    local column_name = delete.primary_key.column_name
-    local quoted_column_name = '"' .. column_name .. '"'
+    local column_name_raw = delete.primary_key.column_name
+    local column_name, _ = self:_normalize_column_name(column_name_raw)
+    if not column_name then
+      return false, "Invalid column name"
+    end
+
     local sql = string.format('ALTER TABLE %s DROP COLUMN %s',
       table_name,
-      quoted_column_name)
+      column_name)
 
     local ok, result = pcall(function()
       return self:query(sql)
