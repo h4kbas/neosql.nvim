@@ -9,6 +9,8 @@ A Neovim plugin for PostgreSQL database interaction with an intuitive interface 
 - **Query Execution**: Execute SQL queries and view results in a formatted markdown table
 - **Data Editing**: Edit cell values directly in the result view
 - **Row Management**: Insert new rows, update existing rows, and delete rows
+- **Column Management**: Create, rename, and delete columns in table properties view
+- **Table Properties Editing**: Edit column properties (name, data type, nullable, default values)
 - **Change Management**: Apply, undo, or clear changes before committing to the database
 - **Export Support**: Export query results to CSV or JSON formats
 - **Syntax Highlighting**: Visual highlighting for NULL values, boolean values, edited cells, and deleted rows
@@ -28,7 +30,7 @@ Using lazy.nvim:
 
 ```lua
 {
-  "h4kbas/neosql",
+  "h4kbas/neosql.nvim",
   config = function()
     require('neosql').setup({
       -- configuration options
@@ -40,13 +42,13 @@ Using lazy.nvim:
 Using packer.nvim:
 
 ```lua
-use 'h4kbas/neosql'
+use 'h4kbas/neosql.nvim'
 ```
 
 Using vim-plug:
 
 ```vim
-Plug 'h4kbas/neosql'
+Plug 'h4kbas/neosql.nvim'
 ```
 
 ## Configuration
@@ -77,8 +79,8 @@ require('neosql').setup({
       select_template = "s",
       update_template = "u",
       delete_template = "d",
+      edit_table_properties = "e",
       focus_query = "q",
-      focus_result = "e",
     },
   }
 })
@@ -114,12 +116,12 @@ require('neosql').setup({
 
 #### Table List Window
 - `<CR>` - Select table and generate `SELECT * FROM "table_name" LIMIT 100;` query
+- `e` - Edit table properties (opens column management view)
 - `i` - Insert template: `INSERT INTO "table_name" (?) VALUES (?);`
 - `s` - Select template: `SELECT ? FROM "table_name" WHERE ?;`
 - `u` - Update template: `UPDATE "table_name" SET ? = ? WHERE ?;`
 - `d` - Delete template: `DELETE FROM "table_name" WHERE ?;`
 - `q` - Focus query window
-- `e` - Focus result window
 
 ### Editing Data
 
@@ -146,6 +148,52 @@ require('neosql').setup({
 4. Press `a` to apply all changes (marked rows will be deleted from the database)
 
 **Note**: The plugin automatically detects primary keys for the queried table. Updates and deletes are applied using WHERE clauses based on primary key values. If you edit a cell in a deleted row, the deletion is automatically undone and the row becomes an update instead.
+
+### Managing Table Properties and Columns
+
+The table properties view allows you to manage table columns: create new columns, rename existing columns, modify column properties (nullable, default values), and delete columns.
+
+#### Opening Table Properties
+
+1. Navigate to the table list window
+2. Position your cursor on the table you want to manage
+3. Press `e` to open the table properties view
+
+#### Creating New Columns
+
+1. In the table properties view, position your cursor where you want to insert a new column
+2. Press `i` to insert a new empty row (representing a new column)
+3. Edit the cells to set:
+   - `column_name` (required) - The name of the new column
+   - `data_type` (required) - The data type (e.g., `VARCHAR(255)`, `INTEGER`, `TIMESTAMP`)
+   - `is_nullable` (optional) - Set to `YES` or `NO` (defaults to `YES` if not specified)
+   - `column_default` (optional) - Default value for the column
+4. Press `a` to apply changes (executes `ALTER TABLE ... ADD COLUMN`)
+
+#### Renaming Columns
+
+1. In the table properties view, navigate to the column you want to rename
+2. Press `e` to edit the `column_name` cell
+3. Enter the new column name
+4. Press `a` to apply changes (executes `ALTER TABLE ... RENAME COLUMN`)
+
+#### Modifying Column Properties
+
+1. In the table properties view, navigate to the column you want to modify
+2. Press `e` to edit the property cell (`is_nullable` or `column_default`)
+3. Enter the new value:
+   - For `is_nullable`: Set to `YES` or `NO`
+   - For `column_default`: Enter the default value (e.g., `'default_value'`, `0`, `NOW()`, or empty to remove)
+4. Press `a` to apply changes (executes `ALTER TABLE ... ALTER COLUMN`)
+
+#### Deleting Columns
+
+1. In the table properties view, position your cursor on the column you want to delete
+2. Press `dd` to mark the column for deletion (the row will be highlighted with strikethrough)
+3. Press `dd` again on the same row to undo the deletion
+4. Press `a` to apply changes (executes `ALTER TABLE ... DROP COLUMN`)
+
+**Note**: All column management operations use the same change management system as data editing. You can undo individual changes (`u` for cell, `U` for row, `c` for all changes) before applying them.
 
 ### Exporting Data
 

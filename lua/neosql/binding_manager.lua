@@ -29,7 +29,7 @@ function BindingManager.new(app_manager)
       update_template = "u",
       delete_template = "d",
       focus_query = "q",
-      focus_result = "e",
+      edit_table_properties = "e",
     },
   }
   self.bindings = {}
@@ -622,9 +622,15 @@ function BindingManager:register_table_list_bindings(bufnr)
     end
   end
 
-  local function focus_result()
-    if self.app_manager.window_manager then
-      self.app_manager.window_manager:focus_result()
+  local function edit_table_properties()
+    local table_name = get_table_name()
+    if not table_name then
+      return
+    end
+
+    local ok, err = self.app_manager:load_table_properties(table_name)
+    if not ok then
+      vim.notify("Failed to load table properties: " .. tostring(err), vim.log.levels.ERROR)
     end
   end
 
@@ -635,7 +641,7 @@ function BindingManager:register_table_list_bindings(bufnr)
     update_template = update_template,
     delete_template = delete_template,
     focus_query = focus_query,
-    focus_result = focus_result,
+    edit_table_properties = edit_table_properties,
   }
 
   for action, keymap in pairs(self.bindings.table_list) do
