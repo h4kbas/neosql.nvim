@@ -23,9 +23,17 @@ function WindowManager:create()
 
   vim.cmd('topleft vsplit')
   self.table_list_win = vim.api.nvim_get_current_win()
-  self.table_list_buf = vim.api.nvim_create_buf(false, true)
+  local name = 'neosql://table_list'
+  local existing = vim.fn.bufnr(name)
+
+  if existing ~= -1 then
+    self.table_list_buf = existing
+  else
+    self.table_list_buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_name(self.table_list_buf, name)
+  end
+
   vim.api.nvim_win_set_buf(self.table_list_win, self.table_list_buf)
-  vim.api.nvim_buf_set_name(self.table_list_buf, 'neosql://table_list')
   vim.api.nvim_buf_set_option(self.table_list_buf, 'filetype', 'neosql-table-list')
   vim.api.nvim_buf_set_option(self.table_list_buf, 'modifiable', false)
   vim.api.nvim_win_set_option(self.table_list_win, 'number', false)
@@ -34,16 +42,32 @@ function WindowManager:create()
   vim.api.nvim_set_current_win(current_win)
   vim.cmd('split')
   self.query_win = vim.api.nvim_get_current_win()
-  self.query_buf = vim.api.nvim_create_buf(false, true)
+  local name = 'neosql://query'
+  local existing = vim.fn.bufnr(name)
+
+  if existing ~= -1 then
+    self.query_buf = existing
+  else
+    self.query_buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_name(self.query_buf, name)
+  end
+
   vim.api.nvim_win_set_buf(self.query_win, self.query_buf)
-  vim.api.nvim_buf_set_name(self.query_buf, 'neosql://query')
   vim.api.nvim_buf_set_option(self.query_buf, 'filetype', 'sql')
 
   vim.cmd('split')
   self.result_win = vim.api.nvim_get_current_win()
-  self.result_buf = vim.api.nvim_create_buf(false, true)
+  local name = 'neosql://result'
+  local existing = vim.fn.bufnr(name)
+
+  if existing ~= -1 then
+    self.result_buf = existing
+  else
+    self.result_buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_name(self.result_buf, name)
+  end
+
   vim.api.nvim_win_set_buf(self.result_win, self.result_buf)
-  vim.api.nvim_buf_set_name(self.result_buf, 'neosql://result')
   vim.api.nvim_buf_set_option(self.result_buf, 'filetype', 'markdown')
   vim.api.nvim_buf_set_option(self.result_buf, 'modifiable', false)
   vim.api.nvim_win_set_option(self.result_win, 'wrap', false)
